@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <title>Analisador de LOGS - Dashboard</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  <link rel="stylesheet" href="styles/main.css">
+  <link rel="stylesheet" href="styles/dashboard.css">
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@1.4.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>🧭 Analisador de LOGS - Dashboard</h1>
+      <p>Análise avançada de dados de rastreamento e telemetria</p>
+    </header>
+    
+    <input type="file" id="fileInput" />
+    <br />
+    <input type="text" id="ccidInput" placeholder="Digite o MAC (ex: FC:01:2C:DA:EC:CE)" size="40" />
+    <br />
+    
+    <div class="controls-grid">
+      <div class="control-group">
+        <label>De: <input type="datetime-local" id="startTime" /></label>
+        <label>Até: <input type="datetime-local" id="endTime" /></label>
+      </div>
+      
+      <div class="control-group">
+        <label><input type="checkbox" id="linhaCheckbox" /> Unir pontos com linhas</label>
+        <label><input type="checkbox" id="replayCheckbox" /> Replay animado</label>
+        <label><input type="checkbox" id="autoFitBounds" checked /> Ajustar mapa aos pontos</label>
+        <label><input type="checkbox" id="showConfigs" /> Mostrar mensagens de configuração</label>
+      </div>
+      
+      <div class="control-group">
+        <label for="pointSize">Tamanho dos pontos: <span id="pointSizeValue">3</span></label>
+        <input type="range" id="pointSize" min="1" max="10" value="3" />
+        
+        <label for="filterType">Filtrar por:</label>
+        <select id="filterType">
+          <option value="all">Todos os pontos</option>
+          <option value="gps">Apenas com GPS</option>
+          <option value="movement">Em movimento (VEL > 0)</option>
+          <option value="stationary">Parados (VEL = 0)</option>
+          <option value="telemetry">Apenas telemetria (com sensores)</option>
+          <option value="config">Apenas configuração</option>
+        </select>
+      </div>
+      
+      <div class="control-group">
+        <label for="minBattery">Bateria mínima (%):</label>
+        <input type="number" id="minBattery" placeholder="0" min="0" max="100" />
+        
+        <label for="maxSpeed">Velocidade máxima (km/h):</label>
+        <input type="number" id="maxSpeed" placeholder="200" min="0" max="500" />
+      </div>
+    </div>
+    
+    <div class="export-buttons">
+      <button id="plotBtn">✨ Plotar Mapa</button>
+      <button id="exportBtn">📦 Exportar JSON</button>
+      <button id="exportCSV">📊 Exportar CSV</button>
+      <button id="exportGPX">🗺️ Exportar GPX</button>
+      <button id="exportStats">📈 Exportar Estatísticas</button>
+      <button id="debugBtn">🐛 Debug</button>
+    </div>
+    
+    <div id="loading">📡 Processando dados...</div>
+    
+    <div id="debugPanel" class="stats-panel" style="display: none;">
+      <h3>🐛 Informações de Debug</h3>
+      <div id="debugContent"></div>
+    </div>
+    
+
+    <!-- MOVEMOS O MAPA E ANÁLISE PARA CIMA -->
+    <div class="tab-container">
+      <div class="tab-buttons">
+        <button class="tab-button active" data-tab="map">🗺️ Mapa</button>
+        <button class="tab-button" data-tab="fence">🛡️ Cercas</button>
+        <button class="tab-button" data-tab="analysis">📈 Análise</button>
+        <button class="tab-button" data-chart="modeChart">🔄 Modos de Operação</button>
+      </div>
+      
+      <div class="tab-content active" id="map-tab">
+        <div id="map"></div>
+      </div>
+      
+      <div class="tab-content" id="fence-tab">
+        <textarea id="fenceCoords" rows="4" cols="60" placeholder="Digite coordenadas: LAT,LON por linha"></textarea>
+        <br />
+        <button id="drawFenceBtn">🛡️ Desenhar Cerca por Coordenadas</button>
+        <button id="clearFencesBtn">🗑️ Limpar Cercas</button>
+      </div>
+      
+      <div class="tab-content" id="analysis-tab">
+        <h3>🔍 Análise Detalhada</h3>
+        <div id="detailedAnalysis"></div>
+      </div>
+    </div>
+    
+    <div id="chartContainer">
+      <h3>📊 Visualizações de Dados</h3>
+      
+      <div class="tab-buttons">
+        <button class="tab-button active" data-chart="tempChart">🌡️ Temperatura</button>
+        <button class="tab-button" data-chart="stepChart">👣 Passos</button>
+        <button class="tab-button" data-chart="batteryChart">🔋 Bateria</button>
+        <button class="tab-button" data-chart="activityChart">🏃 Atividade (ATV)</button>
+        <button class="tab-button" data-chart="inactivityChart">💤 Inatividade (REST)</button>
+      </div>
+      
+      <div class="chart-container">
+        <canvas id="tempChart"></canvas>
+        <canvas id="stepChart" style="display: none;"></canvas>
+        <div id="batteryChart" class="battery-charts" style="display: none;">
+          <div>
+            <h4>🔋 Carga da Bateria (%)</h4>
+            <canvas id="batCharChart"></canvas>
+          </div>
+          <div>
+            <h4>⚡ Tensão da Bateria (V)</h4>
+            <canvas id="batVoltChart"></canvas>
+          </div>
+        </div>
+        <canvas id="activityChart" style="display: none;"></canvas>
+        <canvas id="inactivityChart" style="display: none;"></canvas>
+        <canvas id="modeChart" style="display: none;"></canvas>
+      </div>
+    </div>
+
+    <!-- ESTATÍSTICAS MOVIDAS PARA BAIXO DOS GRÁFICOS -->
+
+    <br />
+    <br />
+
+
+
+    <div id="statsPanel" class="stats-panel">
+      <h3>📊 Estatísticas e Qualidade dos Dados</h3>
+      <div id="statsContent"></div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+
+  <script src="scripts/utils.js"></script>
+  <script src="scripts/filters.js"></script>
+  <script src="scripts/map.js"></script>
+  <script src="scripts/charts.js"></script>
+  <script src="scripts/export.js"></script>
+  <script src="scripts/main.js"></script>
+</body>
+</html>
