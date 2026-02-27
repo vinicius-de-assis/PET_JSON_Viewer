@@ -1,13 +1,29 @@
 // utils.js - Funções utilitárias
 
 function hasTelemetryData(message) {
-  return message.STEPS !== undefined || 
-         message.ATV !== undefined || 
-         message.REST !== undefined ||
-         message.TEMP_MED !== undefined ||
-         message.TEMP_MAX !== undefined ||
-         message.TEMP_MIN !== undefined ||
-         message.VEL !== undefined;
+  // Verifica se tem dados de telemetria tradicionais
+  const hasTraditionalTelemetry = 
+    message.STEPS !== undefined || 
+    message.ATV !== undefined || 
+    message.REST !== undefined ||
+    message.TEMP_MED !== undefined ||
+    message.TEMP_MAX !== undefined ||
+    message.TEMP_MIN !== undefined ||
+    message.VEL !== undefined;
+  
+  // Verifica se tem dados de bateria (mesmo sem outros campos)
+  const hasBatteryData = 
+    message.BAT && 
+    (message.BAT.CHAR !== undefined || message.BAT.VOLT !== undefined);
+  
+  // Verifica se tem dados de movimento
+  const hasMovementData = 
+    message.LAT !== undefined || 
+    message.LON !== undefined ||
+    message.GPS_WARN !== undefined;
+  
+  // Considera como telemetria se tiver QUALQUER um destes
+  return hasTraditionalTelemetry || hasBatteryData || hasMovementData;
 }
 
 function hasConfigData(message) {
@@ -31,6 +47,42 @@ function normalizeBatteryData(batChar, batVolt) {
   return {
     char: Math.round(normalizedChar),
     volt: normalizedVolt
+  };
+}
+
+// utils.js - Função para diagnosticar dados de bateria
+
+function diagnoseBatteryData(pontos) {
+  const comBateria = pontos.filter(p => p.message.BAT);
+  
+  console.log("=== DIAGNÓSTICO DE BATERIA ===");
+  console.log(`Total de pontos: ${pontos.length}`);
+  console.log(`Pontos com BAT: ${comBateria.length}`);
+  
+  if (comBateria.length > 0) {
+    const apenasBateria = comBateria.filter(p => 
+      !p.message.STEPS && !p.message.ATV && !p.message.REST && !p.message.TEMP_MED
+    );
+    
+    console.log(`Pontos APENAS com bateria: ${apenasBateria.length}`);
+    
+    // Amostra dos primeiros 5 pontos de bateria
+    console.log("Amostra de pontos de bateria:");
+    comBateria.slice(0, 5).forEach((p, i) => {
+      console.log(`Ponto ${i+1}:`, {
+        timestamp: p.timestamp,
+        CHAR: p.message.BAT.CHAR,
+        VOLT: p.message.BAT.VOLT,
+        modo: p.message.MODE || 'N/A',
+        apenasBateria: !p.message.STEPS && !p.message.ATV && !p.message.TEMP_MED
+      });
+    });
+  }
+  
+  return {
+    total: comBateria.length,
+    apenasBateria: comBateria.filter(p => !p.message.STEPS && !p.message.ATV && !p.message.TEMP_MED).length,
+    comTelemetria: comBateria.filter(p => p.message.STEPS || p.message.ATV || p.message.TEMP_MED).length
   };
 }
 
@@ -99,11 +151,17 @@ function analyzeDataFormats(data) {
   return analysis;
 }
 
-function parseDateTime(dateStr, timeStr) {
+function parseDateTime(dateStr, timeStr, useStartAsFallback = false) {
   try {
+    // Se não temos data/hora principal, mas temos START_DATE/START_TIME
+    if (!dateStr && !timeStr && useStartAsFallback) {
+      console.log("Usando START_DATE/START_TIME como fallback");
+      return null; // Vai tentar com START depois
+    }
+    
     // Formato: "DD/MM/YY"
     const [day, month, year] = dateStr.split('/');
-    const fullYear = "20" + year; // Converte "25" para "2025"
+    const fullYear = "20" + year; // Converte "26" para "2026"
     
     // Formato: "HH:MM:SS"
     const [hours, minutes, seconds] = timeStr.split(':');
@@ -118,11 +176,16 @@ function parseDateTime(dateStr, timeStr) {
       parseInt(seconds)
     );
     
+    // Verificar se a data é válida
+    if (isNaN(date.getTime())) {
+      throw new Error('Data inválida');
+    }
+    
     // Retornar como ISO string
     return date.toISOString();
   } catch (error) {
     console.warn('Erro ao parsear DATE/TIME:', dateStr, timeStr, error);
-    return new Date().toISOString();
+    return null;
   }
 }
 
@@ -136,20 +199,35 @@ function normalizeDataFormat(parsedLine) {
   }
   
   // Se for o formato direto (sem wrapper)
-  if (parsedLine.CCID || parsedLine.DATE) {
-    let timestamp;
+  if (parsedLine.CCID || parsedLine.DATE || parsedLine.START_DATE) {
+    let timestamp = null;
     
-    // Tentar obter timestamp de DATE e TIME
+    // PRIORIDADE 1: Tentar com DATE e TIME
     if (parsedLine.DATE && parsedLine.TIME) {
       timestamp = parseDateTime(parsedLine.DATE, parsedLine.TIME);
-    } 
-    // Se não tiver DATE/TIME, verificar outros campos
-    else if (parsedLine.timestamp) {
+      if (timestamp) {
+        console.log(`✅ Usando DATE/TIME: ${parsedLine.DATE} ${parsedLine.TIME}`);
+      }
+    }
+    
+    // PRIORIDADE 2: Se não tem DATE/TIME, tentar com START_DATE e START_TIME
+    if (!timestamp && parsedLine.START_DATE && parsedLine.START_TIME) {
+      timestamp = parseDateTime(parsedLine.START_DATE, parsedLine.START_TIME);
+      if (timestamp) {
+        console.log(`✅ Usando START_DATE/START_TIME: ${parsedLine.START_DATE} ${parsedLine.START_TIME}`);
+      }
+    }
+    
+    // PRIORIDADE 3: Se tiver timestamp no próprio objeto
+    if (!timestamp && parsedLine.timestamp) {
       timestamp = parsedLine.timestamp;
-    } else {
-      // Usar timestamp atual como fallback
+      console.log(`✅ Usando timestamp do objeto: ${timestamp}`);
+    }
+    
+    // FALLBACK: Usar timestamp atual com warning
+    if (!timestamp) {
       timestamp = new Date().toISOString();
-      console.warn('Sem timestamp disponível, usando data atual:', parsedLine);
+      console.warn('⚠️ Sem timestamp disponível, usando data atual:', parsedLine);
     }
     
     return {
@@ -161,6 +239,57 @@ function normalizeDataFormat(parsedLine) {
   // Formato desconhecido
   console.warn('Formato desconhecido, ignorando linha:', parsedLine);
   return null;
+}
+
+function analyzeTimestamps(pontos) {
+  console.log("=== ANÁLISE DE TIMESTAMPS ===");
+  
+  const analise = {
+    total: pontos.length,
+    comDate: 0,
+    comTime: 0,
+    comStartDate: 0,
+    comStartTime: 0,
+    comDateETime: 0,
+    comStartDateEStartTime: 0,
+    timestamps: []
+  };
+  
+  pontos.forEach((p, index) => {
+    const msg = p.message;
+    
+    if (msg.DATE) analise.comDate++;
+    if (msg.TIME) analise.comTime++;
+    if (msg.START_DATE) analise.comStartDate++;
+    if (msg.START_TIME) analise.comStartTime++;
+    if (msg.DATE && msg.TIME) analise.comDateETime++;
+    if (msg.START_DATE && msg.START_TIME) analise.comStartDateEStartTime++;
+    
+    // Guardar amostra dos primeiros 10 timestamps
+    if (index < 10) {
+      analise.timestamps.push({
+        index,
+        timestamp: p.timestamp,
+        date: msg.DATE || 'N/A',
+        time: msg.TIME || 'N/A',
+        startDate: msg.START_DATE || 'N/A',
+        startTime: msg.START_TIME || 'N/A',
+        fonte: msg.DATE ? 'DATE/TIME' : (msg.START_DATE ? 'START_DATE/START_TIME' : 'fallback')
+      });
+    }
+  });
+  
+  console.log("📊 Estatísticas:", {
+    total: analise.total,
+    comDateETime: analise.comDateETime,
+    comStartDateEStartTime: analise.comStartDateEStartTime,
+    apenasStartDate: analise.comStartDate - analise.comStartDateEStartTime,
+    apenasStartTime: analise.comStartTime - analise.comStartDateEStartTime
+  });
+  
+  console.log("📋 Amostra dos primeiros timestamps:", analise.timestamps);
+  
+  return analise;
 }
 
 function normalizeBatteryData(batChar, batVolt) {

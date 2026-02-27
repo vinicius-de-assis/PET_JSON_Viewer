@@ -125,6 +125,10 @@ function processAndPlot() {
     const formatAnalysis = analyzeDataFormats(allData);
     console.log("📊 Análise dos formatos de dados:", formatAnalysis);
 
+    // ANÁLISE DE TIMESTAMPS
+    const timestampAnalysis = analyzeTimestamps(allData);
+    console.log("⏰ Análise de timestamps:", timestampAnalysis);
+
     // Limpar gráficos anteriores
     [tempChart, stepChart, batCharChart, batVoltChart, activityChart, inactivityChart, modeChart].forEach(chart => {
       if (chart) chart.destroy();
@@ -135,6 +139,28 @@ function processAndPlot() {
     try {
       pontosFiltrados = filterData(allData, filters);
       console.log("📊 Dados filtrados:", pontosFiltrados.length);
+
+      // DIAGNÓSTICO DE BATERIA
+      const bateriaDiagnostico = diagnoseBatteryData(pontosFiltrados);
+      console.log("🔋 Diagnóstico de bateria:", bateriaDiagnostico);
+
+      // Verificar se os pacotes de configuração estão sendo incluídos
+      const configPoints = pontosFiltrados.filter(p => hasConfigData(p.message));
+      console.log(`🔧 Pontos de configuração: ${configPoints.length}`);
+      
+      if (configPoints.length > 0) {
+        console.log("📋 Exemplo de ponto de configuração:", {
+          timestamp: configPoints[0].timestamp,
+          message: {
+            CCID: configPoints[0].message.CCID,
+            DATE: configPoints[0].message.DATE,
+            TIME: configPoints[0].message.TIME,
+            START_DATE: configPoints[0].message.START_DATE,
+            START_TIME: configPoints[0].message.START_TIME
+          }
+        });
+      }
+
     } catch (filterError) {
       console.warn("Erro no filtro de dados, usando dados brutos:", filterError);
       pontosFiltrados = allData;

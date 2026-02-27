@@ -156,40 +156,49 @@ function plotCharts(pontos) {
 
   // Gráficos de bateria - COM CORES POR MODO
   try {
-    const batData = pontos.filter(p => p.message.BAT && p.message.BAT.CHAR !== undefined).map(p => ({
+    // Filtrar pontos que têm dados de bateria (mesmo sem outros campos)
+    const batData = pontos.filter(p => 
+      p.message.BAT && 
+      (p.message.BAT.CHAR !== undefined || p.message.BAT.VOLT !== undefined)
+    ).map(p => ({
       x: new Date(p.timestamp),
       carga: p.message.BAT.CHAR,
-      volts: p.message.BAT.VOLT / 1000,
+      volts: p.message.BAT.VOLT / 1000, // Converter mV para V
       modo: p.message.MODE || 'DESCONHECIDO',
-      timestamp: p.timestamp
+      timestamp: p.timestamp,
+      // Indicar se é pacote apenas de bateria
+      isBatteryOnly: !p.message.STEPS && !p.message.ATV && !p.message.TEMP_MED
     }));
+    
+    console.log(`🔋 Dados de bateria encontrados: ${batData.length} pontos`);
+    console.log(`📊 Pontos apenas de bateria: ${batData.filter(d => d.isBatteryOnly).length}`);
     
     if (batData.length > 0) {
       // Função para obter cor baseada no modo
       function getModoColor(modo) {
         const cores = {
-          'PASSEIO': '#2196F3',     // Azul (era verde)
-          'NORMAL': '#4CAF50',      // Verde (era azul)
-          'RASTREIO': '#FF9800',    // Laranja (mantido)
-          'DESCONHECIDO': '#9E9E9E' // Cinza (mantido)
+          'PASSEIO': '#2196F3',     // Azul
+          'NORMAL': '#4CAF50',      // Verde
+          'RASTREIO': '#FF9800',    // Laranja
+          'DESCONHECIDO': '#9E9E9E' // Cinza
         };
         return cores[modo] || '#9E9E9E';
       }
 
-      // Gráfico de carga com cores por modo
+      // Gráfico de carga
       batCharChart = createChartSafe('batCharChart', {
         type: 'line',
         data: {
           datasets: [{
-            label: 'Carga da Bateria',
+            label: 'Carga da Bateria (%)',
             data: batData.map(d => ({x: d.x, y: d.carga})),
             borderColor: 'green',
             backgroundColor: 'rgba(0, 255, 0, 0.1)',
             fill: true,
             tension: 0.4,
-            pointBackgroundColor: batData.map(d => getModoColor(d.modo)),
-            pointBorderColor: batData.map(d => getModoColor(d.modo)),
-            pointRadius: 4,
+            pointBackgroundColor: batData.map(d => d.isBatteryOnly ? '#FFA500' : getModoColor(d.modo)),
+            pointBorderColor: batData.map(d => d.isBatteryOnly ? '#FFA500' : getModoColor(d.modo)),
+            pointRadius: batData.map(d => d.isBatteryOnly ? 6 : 4), // Pontos maiores para pacotes só bateria
             pointHoverRadius: 8,
             pointBorderWidth: 2
           }]
@@ -201,63 +210,63 @@ function plotCharts(pontos) {
               callbacks: {
                 label: function(context) {
                   const index = context.dataIndex;
-                  const modo = batData[index].modo;
-                  return `Carga: ${context.parsed.y}% | Modo: ${modo}`;
+                  const dataPoint = batData[index];
+                  const tipo = dataPoint.isBatteryOnly ? '📱 Apenas Bateria' : `📊 Modo: ${dataPoint.modo}`;
+                  return [
+                    `Carga: ${context.parsed.y.toFixed(1)}%`,
+                    tipo
+                  ];
                 },
                 afterLabel: function(context) {
                   const index = context.dataIndex;
                   const dataPoint = batData[index];
                   const time = new Date(dataPoint.timestamp).toLocaleString();
-                  return `Horário: ${time}`;
-                },
-                footer: function(tooltipItems) {
-                  const index = tooltipItems[0].dataIndex;
-                  const modo = batData[index].modo;
-                  const cor = getModoColor(modo);
-                  return `🔵 Modo: ${modo}`;
+                  return `🕐 ${time}`;
                 }
               }
             },
-            legend: {
+            title: {
               display: true,
-              labels: {
-                generateLabels: function(chart) {
-                  const modos = [...new Set(batData.map(d => d.modo))];
-                  return modos.map(modo => ({
-                    text: modo,
-                    fillStyle: getModoColor(modo),
-                    strokeStyle: getModoColor(modo),
-                    lineWidth: 2
-                  }));
-                }
-              }
+              text: 'Carga da Bateria ao Longo do Tempo'
             }
           },
           scales: {
-            x: { type: 'time', title: { display: true, text: 'Tempo' } },
+            x: { 
+              type: 'time', 
+              title: { display: true, text: 'Tempo' },
+              time: {
+                unit: 'hour',
+                displayFormats: {
+                  hour: 'HH:mm'
+                }
+              }
+            },
             y: { 
               title: { display: true, text: 'Carga (%)' }, 
               min: 0, 
-              max: 100 
+              max: 100,
+              grid: {
+                color: 'rgba(0,0,0,0.1)'
+              }
             }
           }
         }
       }, 'Carga da Bateria');
 
-      // Gráfico de tensão com cores por modo
+      // Gráfico de tensão
       batVoltChart = createChartSafe('batVoltChart', {
         type: 'line',
         data: {
           datasets: [{
-            label: 'Tensão da Bateria',
+            label: 'Tensão da Bateria (V)',
             data: batData.map(d => ({x: d.x, y: d.volts})),
             borderColor: 'orange',
             backgroundColor: 'rgba(255, 165, 0, 0.1)',
             fill: true,
             tension: 0.4,
-            pointBackgroundColor: batData.map(d => getModoColor(d.modo)),
-            pointBorderColor: batData.map(d => getModoColor(d.modo)),
-            pointRadius: 4,
+            pointBackgroundColor: batData.map(d => d.isBatteryOnly ? '#FFA500' : getModoColor(d.modo)),
+            pointBorderColor: batData.map(d => d.isBatteryOnly ? '#FFA500' : getModoColor(d.modo)),
+            pointRadius: batData.map(d => d.isBatteryOnly ? 6 : 4),
             pointHoverRadius: 8,
             pointBorderWidth: 2
           }]
@@ -269,30 +278,44 @@ function plotCharts(pontos) {
               callbacks: {
                 label: function(context) {
                   const index = context.dataIndex;
-                  const modo = batData[index].modo;
-                  return `Tensão: ${context.parsed.y.toFixed(2)}V | Modo: ${modo}`;
+                  const dataPoint = batData[index];
+                  const tipo = dataPoint.isBatteryOnly ? '📱 Apenas Bateria' : `📊 Modo: ${dataPoint.modo}`;
+                  return [
+                    `Tensão: ${context.parsed.y.toFixed(3)}V`,
+                    tipo
+                  ];
                 },
                 afterLabel: function(context) {
                   const index = context.dataIndex;
                   const dataPoint = batData[index];
                   const time = new Date(dataPoint.timestamp).toLocaleString();
-                  return `Horário: ${time}`;
-                },
-                footer: function(tooltipItems) {
-                  const index = tooltipItems[0].dataIndex;
-                  const modo = batData[index].modo;
-                  const cor = getModoColor(modo);
-                  return `🔵 Modo: ${modo}`;
+                  return `🕐 ${time}`;
                 }
               }
+            },
+            title: {
+              display: true,
+              text: 'Tensão da Bateria ao Longo do Tempo'
             }
           },
           scales: {
-            x: { type: 'time', title: { display: true, text: 'Tempo' } },
+            x: { 
+              type: 'time', 
+              title: { display: true, text: 'Tempo' },
+              time: {
+                unit: 'hour',
+                displayFormats: {
+                  hour: 'HH:mm'
+                }
+              }
+            },
             y: { 
               title: { display: true, text: 'Tensão (V)' }, 
-              min: 0.0, 
-              max: 4.3 
+              min: 3.0, 
+              max: 4.3,
+              grid: {
+                color: 'rgba(0,0,0,0.1)'
+              }
             }
           }
         }

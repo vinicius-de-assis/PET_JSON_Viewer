@@ -21,13 +21,27 @@ function filterData(data, filters) {
     const m = item.message;
     const ts = new Date(item.timestamp);
     
+    // Filtro CCID
     if (filters.ccid && m.CCID !== filters.ccid) return false;
+    
+    // Filtro temporal
     if (!isNaN(filters.startTime) && ts < filters.startTime) return false;
     if (!isNaN(filters.endTime) && ts > filters.endTime) return false;
     
-    if (filters.minBattery > 0 && m.BAT?.CHAR < filters.minBattery) return false;
-    if (m.VEL > filters.maxSpeed) return false;
+    // Filtro bateria - MAIS PERMISSIVO
+    if (filters.minBattery > 0) {
+      // Se tem bateria, verifica o valor
+      if (m.BAT && m.BAT.CHAR !== undefined) {
+        if (m.BAT.CHAR < filters.minBattery) return false;
+      }
+      // Se não tem bateria, considera como dados que não podem ser filtrados por bateria
+      // (não filtra por bateria se não houver dados de bateria)
+    }
     
+    // Filtro velocidade - só aplica se tiver VEL
+    if (filters.maxSpeed < 500 && m.VEL !== undefined && m.VEL > filters.maxSpeed) return false;
+    
+    // Filtro tipo - MAIS PERMISSIVO PARA BATERIA
     switch (filters.filterType) {
       case 'gps':
         return m.LAT !== 0 && m.LON !== 0;
@@ -36,11 +50,16 @@ function filterData(data, filters) {
       case 'stationary':
         return m.VEL === 0;
       case 'telemetry':
+        // Agora considera bateria como telemetria
         return hasTelemetryData(m);
       case 'config':
         return hasConfigData(m);
+      case 'battery':
+        // NOVO: Filtrar apenas pacotes com dados de bateria
+        return m.BAT && (m.BAT.CHAR !== undefined || m.BAT.VOLT !== undefined);
       default:
-        return filters.showConfigs ? true : hasTelemetryData(m);
+        // 'all' - mostra tudo, inclusive pacotes de bateria
+        return true;
     }
   }).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
 }
