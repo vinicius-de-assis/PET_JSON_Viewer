@@ -21,9 +21,14 @@
     
     <input type="file" id="fileInput" />
     <br />
-    <input type="text" id="ccidInput" placeholder="Digite o MAC (ex: FC:01:2C:DA:EC:CE)" size="40" />
+    <!-- Substituímos o input text por um select preenchido via Javascript -->
+    <select id="ccidInput">
+       <option value="">Selecione um arquivo para ver os MACs disponíveis...</option>
+    </select>
     <br />
-    
+    <!-- <input type="text" id="ccidInput" placeholder="Digite o MAC (ex: FC:01:2C:DA:EC:CE)" size="40" />
+    <br /> -->
+
     <div class="controls-grid">
       <div class="control-group">
         <label>De: <input type="datetime-local" id="startTime" /></label>
@@ -85,6 +90,7 @@
         <button class="tab-button active" data-tab="map">🗺️ Mapa</button>
         <button class="tab-button" data-tab="fence">🛡️ Cercas</button>
         <button class="tab-button" data-tab="analysis">📈 Análise</button>
+        <button class="tab-button" data-tab="validation" style="color: #dc3545; font-weight: bold;">⚠️ Problemas</button>
         <button class="tab-button" data-chart="modeChart">🔄 Modos de Operação</button>
       </div>
       
@@ -102,6 +108,13 @@
       <div class="tab-content" id="analysis-tab">
         <h3>🔍 Análise Detalhada</h3>
         <div id="detailedAnalysis"></div>
+      </div>
+
+      <!-- NOVA ABA DE VALIDAÇÃO -->
+      <div class="tab-content" id="validation-tab">
+        <h3>⚠️ Diagnóstico de Operação do Dispositivo</h3>
+        <p>Esta aba exibe anomalias e erros nos registros de telemetria baseados nas regras de validação.</p>
+        <div id="validationContent"></div>
       </div>
     </div>
     

@@ -17,7 +17,7 @@ body {
 }
 
 header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #6b137a 0%, #9b14b3 100%);
   color: white;
   padding: 20px;
   border-radius: 10px;
@@ -35,12 +35,12 @@ h1 {
 }
 
 h2 {
-  color: #667eea;
+  color:#6b137a;
   font-size: 22px;
 }
 
 h3 {
-  color: #764ba2;
+  color: #6b137a;
   font-size: 18px;
 }
 
@@ -72,12 +72,12 @@ input:focus,
 select:focus,
 textarea:focus {
   outline: none;
-  border-color: #667eea;
+  border-color: #6b137a;
   box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
 }
 
 button {
-  background: #667eea;
+  background: #6b137a;
   color: white;
   border: none;
   padding: 8px 16px;
@@ -91,7 +91,7 @@ button {
 }
 
 button:hover {
-  background: #5a6fd8;
+  background: #667eea;
   transform: translateY(-1px);
 }
 

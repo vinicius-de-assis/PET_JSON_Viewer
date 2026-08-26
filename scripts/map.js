@@ -165,10 +165,29 @@ function plotMap(pontos, filters) {
 
 function createPopupContent(ponto) {
   const m = ponto.message;
+  
+  // Cria bloco de avisos HTML caso haja violação de dados
+  let warningsHTML = '';
+  if (!ponto.isValid && ponto.validations && ponto.validations.length > 0) {
+    warningsHTML = `
+      <div style="background-color: #f8d7da; color: #721c24; padding: 8px; border-radius: 5px; margin-bottom: 10px; font-size: 11px;">
+        <strong style="display: block; margin-bottom: 3px;">⚠️ Dados Inválidos:</strong>
+        <ul style="margin: 0; padding-left: 15px;">
+          ${ponto.validations.map(v => `<li>${v.error}</li>`).join('')}
+        </ul>
+      </div>
+    `;
+  }
+
+  // Gera campo WIFI apenas se existir (o fix da validação já removeu os indevidos)
+  const wifiHTML = m.WIFI ? `<strong>WIFI:</strong> ${m.WIFI}<br>` : '';
+
   return `
     <div style="min-width: 250px;">
+      ${warningsHTML}
       <strong>CCID:</strong> ${m.CCID}<br>
       <strong>Data/Hora:</strong> ${new Date(ponto.timestamp).toLocaleString()}<br>
+      ${wifiHTML}
       <strong>Posição:</strong> ${m.LAT.toFixed(6)}, ${m.LON.toFixed(6)}<br>
       <strong>Bateria:</strong> ${m.BAT?.CHAR || 'N/A'}%<br>
       <strong>Temperatura Média:</strong> ${m.TEMP_MED || 'N/A'}°C<br>
@@ -176,6 +195,7 @@ function createPopupContent(ponto) {
       ${m.TEMP_MIN ? `<strong>Temperatura Mínima:</strong> ${m.TEMP_MIN}°C<br>` : ''}
       <strong>Passos:</strong> ${m.STEPS || 0}<br>
       <strong>Atividade (ATV):</strong> ${m.ATV || 0}<br>
+      <strong>Repouso (REST):</strong> ${m.REST || 0}<br>
       <strong>Velocidade:</strong> ${m.VEL || 0} km/h
     </div>
   `;

@@ -190,7 +190,7 @@ function parseDateTime(dateStr, timeStr, useStartAsFallback = false) {
 }
 
 function normalizeDataFormat(parsedLine) {
-  // Se já estiver no formato correto com timestamp
+  // Se já estiver no formato correto com wrapper {timestamp, message}
   if (parsedLine.timestamp && parsedLine.message) {
     return {
       timestamp: parsedLine.timestamp,
@@ -199,11 +199,18 @@ function normalizeDataFormat(parsedLine) {
   }
   
   // Se for o formato direto (sem wrapper)
-  if (parsedLine.CCID || parsedLine.DATE || parsedLine.START_DATE) {
+  if (parsedLine.CCID || parsedLine.DATE || parsedLine.START_DATE || parsedLine._ext_timestamp) {
     let timestamp = null;
     
-    // PRIORIDADE 1: Tentar com DATE e TIME
-    if (parsedLine.DATE && parsedLine.TIME) {
+    // PRIORIDADE 0: Timestamp externo extraído do prefixo do log (Mais preciso)
+    if (parsedLine._ext_timestamp) {
+      timestamp = parsedLine._ext_timestamp;
+      console.log(`✅ Usando timestamp externo do log: ${timestamp}`);
+      delete parsedLine._ext_timestamp; // Limpa campo temporário para não sujar o JSON final
+    }
+    
+    // PRIORIDADE 1: Tentar com DATE e TIME do GPS
+    if (!timestamp && parsedLine.DATE && parsedLine.TIME) {
       timestamp = parseDateTime(parsedLine.DATE, parsedLine.TIME);
       if (timestamp) {
         console.log(`✅ Usando DATE/TIME: ${parsedLine.DATE} ${parsedLine.TIME}`);
@@ -218,13 +225,13 @@ function normalizeDataFormat(parsedLine) {
       }
     }
     
-    // PRIORIDADE 3: Se tiver timestamp no próprio objeto
+    // PRIORIDADE 3: Se tiver timestamp no próprio objeto (fallback)
     if (!timestamp && parsedLine.timestamp) {
       timestamp = parsedLine.timestamp;
       console.log(`✅ Usando timestamp do objeto: ${timestamp}`);
     }
     
-    // FALLBACK: Usar timestamp atual com warning
+    // FALLBACK final: Usar timestamp atual com warning
     if (!timestamp) {
       timestamp = new Date().toISOString();
       console.warn('⚠️ Sem timestamp disponível, usando data atual:', parsedLine);

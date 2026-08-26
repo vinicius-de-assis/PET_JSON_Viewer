@@ -186,7 +186,7 @@ canvas {
 }
 
 .tab-button {
-  background: #e9ecef;
+  background: #5d4a61;
   border: none;
   padding: 10px 20px;
   cursor: pointer;
@@ -194,7 +194,7 @@ canvas {
 }
 
 .tab-button.active {
-  background: #667eea;
+  background: #6b137a;
   color: white;
 }
 

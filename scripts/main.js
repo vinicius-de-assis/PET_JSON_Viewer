@@ -16,6 +16,7 @@ document.addEventListener('DOMContentLoaded', function() {
   initializeChartTabs();
   
   // Event listeners principais
+  document.getElementById('fileInput').addEventListener('change', plotData);
   document.getElementById('plotBtn').addEventListener('click', plotData);
   document.getElementById('exportBtn').addEventListener('click', exportJSON);
   document.getElementById('exportCSV').addEventListener('click', exportCSV);
@@ -47,16 +48,52 @@ function plotData() {
 
   document.getElementById('loading').style.display = 'block';
 
+  // AS DUAS LINHAS ABAIXO FALTAVAM NO SEU CÓDIGO
   const reader = new FileReader();
   reader.onload = function(e) {
     try {
       const lines = e.target.result.trim().split('\n');
       allData = lines.map(line => {
         try { 
-          const parsed = JSON.parse(line);
+          line = line.trim();
+          if (!line) return null;
+
+          let jsonStr = line;
+          let externalTimestamp = null;
+
+          // Procura o início do JSON na linha (primeiro '{')
+          const jsonStartIndex = line.indexOf('{');
+          
+          // Se houver um prefixo antes do JSON (ex: json-MAC-2026-08-25 10:43:06.123: {...)
+          if (jsonStartIndex > 0) {
+            const prefix = line.substring(0, jsonStartIndex);
+            
+            // Extrai a data/hora do prefixo (YYYY-MM-DD HH:MM:SS.ms)
+            const timeMatch = prefix.match(/(\d{4}-\d{2}-\d{2})\s(\d{2}:\d{2}:\d{2}(?:\.\d+)?)/);
+            if (timeMatch) {
+              // Converte para formato ISO (ex: 2026-08-25T10:43:06.866)
+              // Omitir o 'Z' no final faz o navegador usar o timezone local
+              let isoTime = `${timeMatch[1]}T${timeMatch[2]}`;
+              if (isoTime.length > 23) {
+                isoTime = isoTime.substring(0, 23); // Trunca nanosegundos (mantém milissegundos)
+              }
+              externalTimestamp = isoTime;
+            }
+            
+            // Isola apenas a parte do JSON para o parser
+            jsonStr = line.substring(jsonStartIndex);
+          }
+
+          const parsed = JSON.parse(jsonStr);
+          
+          // Injeta o timestamp externo no objeto para a normalização usar
+          if (externalTimestamp) {
+            parsed._ext_timestamp = externalTimestamp;
+          }
           
           // Normalizar formato dos dados
           const normalized = normalizeDataFormat(parsed);
+
           if (!normalized) return null;
           
           // Normalizar dados de bateria
@@ -108,11 +145,13 @@ function plotData() {
       document.getElementById('loading').style.display = 'none';
     }
   };
+  
   reader.onerror = function() {
     document.getElementById('loading').innerHTML = 
       '<div class="anomaly-alert">⚠️ Erro na leitura do arquivo.</div>';
     document.getElementById('loading').style.display = 'none';
   };
+  
   reader.readAsText(file);
 }
 
@@ -125,6 +164,28 @@ function processAndPlot() {
     const formatAnalysis = analyzeDataFormats(allData);
     console.log("📊 Análise dos formatos de dados:", formatAnalysis);
 
+    // === POPULAR O DROPDOWN DE MACs ===
+    const ccidSelect = document.getElementById('ccidInput');
+    // Salva o valor atualmente selecionado para não perdê-lo caso o filtro seja re-processado
+    const currentSelected = ccidSelect.value;
+    
+    // Limpa o select
+    ccidSelect.innerHTML = '<option value="">Todos os dispositivos</option>';
+    
+    // Insere os MACs encontrados no log
+    if (formatAnalysis.uniqueCCIDs && formatAnalysis.uniqueCCIDs.length > 0) {
+      formatAnalysis.uniqueCCIDs.forEach(mac => {
+        const option = document.createElement('option');
+        option.value = mac;
+        option.textContent = mac;
+        ccidSelect.appendChild(option);
+      });
+      // Restaura a seleção se o MAC ainda existir na nova lista
+      if (formatAnalysis.uniqueCCIDs.includes(currentSelected)) {
+        ccidSelect.value = currentSelected;
+      }
+    }
+    
     // ANÁLISE DE TIMESTAMPS
     const timestampAnalysis = analyzeTimestamps(allData);
     console.log("⏰ Análise de timestamps:", timestampAnalysis);
@@ -147,19 +208,6 @@ function processAndPlot() {
       // Verificar se os pacotes de configuração estão sendo incluídos
       const configPoints = pontosFiltrados.filter(p => hasConfigData(p.message));
       console.log(`🔧 Pontos de configuração: ${configPoints.length}`);
-      
-      if (configPoints.length > 0) {
-        console.log("📋 Exemplo de ponto de configuração:", {
-          timestamp: configPoints[0].timestamp,
-          message: {
-            CCID: configPoints[0].message.CCID,
-            DATE: configPoints[0].message.DATE,
-            TIME: configPoints[0].message.TIME,
-            START_DATE: configPoints[0].message.START_DATE,
-            START_TIME: configPoints[0].message.START_TIME
-          }
-        });
-      }
 
     } catch (filterError) {
       console.warn("Erro no filtro de dados, usando dados brutos:", filterError);
@@ -185,6 +233,24 @@ function processAndPlot() {
     
     displayStatistics(qualityAnalysis);
     
+    // ==== AQUI ENTRA O NOVO MOTOR DE VALIDAÇÃO ====
+    let validationStats = null;
+    try {
+       validationStats = runDataValidation(pontosFiltrados);
+    } catch(validationError) {
+       console.warn("Erro ao rodar motor de validação:", validationError);
+    }
+    
+    try {
+      displayDetailedAnalysis(pontosFiltrados, qualityAnalysis);
+      // Chama o preenchimento da nova aba de Problemas:
+      if (typeof displayValidationIssues === 'function') {
+        displayValidationIssues(validationStats, pontosFiltrados);
+      }
+    } catch (analysisError) {
+      console.warn("Erro na análise detalhada:", analysisError);
+    }
+    
     try {
       plotMap(pontosFiltrados, filters);
     } catch (mapError) {
@@ -197,12 +263,6 @@ function processAndPlot() {
     } catch (chartError) {
       console.error("Erro ao plotar gráficos:", chartError);
       document.getElementById('chartContainer').innerHTML += '<div class="anomaly-alert">⚠️ Alguns gráficos não puderam ser carregados</div>';
-    }
-    
-    try {
-      displayDetailedAnalysis(pontosFiltrados, qualityAnalysis);
-    } catch (analysisError) {
-      console.warn("Erro na análise detalhada:", analysisError);
     }
 
     if (document.getElementById('debugPanel').style.display === 'block') {
